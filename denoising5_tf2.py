@@ -9,6 +9,13 @@
 # To apply and plot
 #  % ./denoising5_tf2.py 1 1 
 
+
+# import comet_ml in the top of your file
+from comet_ml import Experiment
+
+# Add the following code anywhere in your machine learning file
+experiment = Experiment(project_name="wf_denoising")
+
 import os, sys
 import numpy as np
 import pandas as pd
@@ -24,8 +31,8 @@ from tensorflow.keras.callbacks import ModelCheckpoint
 # Waveform has 1024 sample-points
 npoints = 1024 # 256 # number of sample-points to be used
 
-load_weights = bool(int(sys.argv[1])) # True #False #True
-plot_data = bool(int(sys.argv[2])) #True #False
+load_weights = bool(int(sys.argv[1])) 
+plot_data = bool(int(sys.argv[2])) 
 
 
 filename = os.path.basename(__file__)
@@ -55,11 +62,6 @@ autoencoder = Model(inputs=input_img, outputs=decoded)
 autoencoder.compile(optimizer='adam', loss='mse')
 #autoencoder.compile(optimizer='adam', loss='binary_crossentropy') 
 autoencoder.summary()
-
-# if plot_data:
-#     #from keras.utils.vis_utils import plot_model
-#     from tensorflow.python.keras.utils.vis_utils import plot_model
-#     plot_model(autoencoder, to_file="architecture.png", show_shapes=True)
 
 
 
