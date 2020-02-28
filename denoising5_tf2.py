@@ -19,8 +19,19 @@ experiment = Experiment(project_name="wf_denoising")
 import os, sys
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 import json
+
+# arg
+load_weights = bool(int(sys.argv[1])) 
+plot_data = bool(int(sys.argv[2])) 
+
+filename = os.path.basename(__file__)
+filename = os.path.splitext(filename)[0]
+
+import matplotlib
+if not plot_data:
+    matplotlib.use("Agg") # this is necessary when using plt without display (batch)
+import matplotlib.pyplot as plt
 
 import tensorflow as tf
 from tensorflow.keras.layers import Input, Dense, Conv1D, MaxPooling1D, UpSampling1D
@@ -30,36 +41,47 @@ from tensorflow.keras.callbacks import ModelCheckpoint
 
 # Waveform has 1024 sample-points
 npoints = 1024 # 256 # number of sample-points to be used
+scale = 5
+offset = 0.05 # 50 mV
 
-load_weights = bool(int(sys.argv[1])) 
-plot_data = bool(int(sys.argv[2])) 
-
-
-filename = os.path.basename(__file__)
-filename = os.path.splitext(filename)[0]
-
-
+# basic hyper-parameters
+params = {
+    'optimizer': 'adam',
+    'loss': 'mse',
+    'epochs': 10, # 20,
+    'batch_size': 256,
+}
+# additional parameters
+params2 = {
+    'npoints': npoints,
+    'scale': scale,
+    'offset': offset,
+    'conv_activation': 'relu',
+    'output_activation': 'sigmoid',
+}
+experiment.log_parameters(params2)
+    
 # Build model with functional API
 
 input_img = Input(shape=(npoints,1))
-x = Conv1D(64, 5, padding='same', activation='relu')(input_img)
+x = Conv1D(64, 5, padding='same', activation=params2['conv_activation'])(input_img)
 x = MaxPooling1D(2, padding='same')(x)
-x = Conv1D(32, 5, padding='same', activation='relu')(x)
+x = Conv1D(32, 5, padding='same', activation=params2['conv_activation'])(x)
 x = MaxPooling1D(2, padding='same')(x)
-x = Conv1D(32, 5, padding='same', activation='relu')(x)
+x = Conv1D(32, 5, padding='same', activation=params2['conv_activation'])(x)
 encoded = MaxPooling1D(2, padding='same')(x)
 
-x = Conv1D(32, 5, padding='same', activation='relu')(encoded)
+x = Conv1D(32, 5, padding='same', activation=params2['conv_activation'])(encoded)
 x = UpSampling1D(2)(x)
-x = Conv1D(32, 5, padding='same', activation='relu')(x)
+x = Conv1D(32, 5, padding='same', activation=params2['conv_activation'])(x)
 x = UpSampling1D(2)(x)
-x = Conv1D(64, 5, padding='same', activation='relu')(x)
+x = Conv1D(64, 5, padding='same', activation=params2['conv_activation'])(x)
 x = UpSampling1D(2)(x)
-decoded = Conv1D(1, 5, padding='same', activation='sigmoid')(x)
+decoded = Conv1D(1, 5, padding='same', activation=params2['output_activation'])(x)
 
 autoencoder = Model(inputs=input_img, outputs=decoded)
 
-autoencoder.compile(optimizer='adam', loss='mse')
+autoencoder.compile(optimizer=params['optimizer'], loss=params['loss'])
 #autoencoder.compile(optimizer='adam', loss='binary_crossentropy') 
 autoencoder.summary()
 
@@ -85,8 +107,7 @@ x_noise = x_noise.T[-npoints:].T # keep last npoints
 # Add noise
 x_train_noisy = x_original + x_noise
 
-scale = 5
-offset = 0.05 # 50 mV
+# Adjust scale and offset of waveforms
 x_original *= scale # scale
 x_original += offset * scale;
 x_train_noisy *= scale # scale
@@ -105,13 +126,13 @@ if not load_weights:
 
     # Callback for model checkpoints
     checkpoint = ModelCheckpoint(
-        filepath = filename + ".h5",
+        filepath = filename + "-{epoch:02d}.h5",
         save_best_only=True)
     
     # 'labels' are the pictures themselves
     hist = autoencoder.fit(x_train_noisy, x_original,
-                           epochs=20, #50,
-                           batch_size=256,
+                           epochs=params['epochs'],
+                           batch_size=params['batch_size'],
                            shuffle=True,
                            validation_split=0.1,
                            callbacks=[checkpoint])
@@ -135,17 +156,14 @@ else:
     autoencoder.save(filename + '.h5', include_optimizer=False)
         
 # Plot training history 
-if plot_data:
-    plt.plot(history['loss'], linewidth=3, label='train')
-    plt.plot(history['val_loss'], linewidth=3, label='valid')
-    plt.grid()
-    plt.legend()
-    plt.xlabel('epoch')
-    plt.ylabel('loss')
-    plt.ylim(1e-2, 0.1)
-    plt.ylim(1e-5, 1e-3) #mse
-    #plt.yscale('log')
-    #plt.show()
+plt.plot(history['loss'], linewidth=3, label='train')
+plt.plot(history['val_loss'], linewidth=3, label='valid')
+plt.grid()
+plt.legend()
+plt.xlabel('epoch')
+plt.ylabel('loss')
+plt.ylim(1e-2, 0.1)
+plt.ylim(1e-5, 1e-3) #mse
 
     
 # test data
@@ -162,27 +180,17 @@ decoded_imgs -= scale * offset
 decoded_imgs /= scale
 
 
+# How many waveforms to be displayed
+n = 1
+plt.figure(figsize=(20, 6))
+for i in range(n):
+    plt.plot(x_test[i], label="original")
+    plt.plot(x_test_noisy[i], label="noisy")
+    plt.plot(decoded_imgs[i], label="decoded")
+    plt.legend()
+
+# Send this plot to comet
+experiment.log_figure(figure=plt)
 
 if plot_data:
-    # 何個表示するか
-    n = 1
-    plt.figure(figsize=(20, 6))
-    for i in range(n):
-        # # オリジナルのテスト画像を表示
-        # ax = plt.subplot(2, n, i+1)
-        # plt.plot(x_test[i])
-        # # ax.get_xaxis().set_visible(False)
-        # # ax.get_yaxis().set_visible(False)
-        
-        # # 変換された画像を表示
-        # ax = plt.subplot(2, n, i+1+n)
-        # plt.plot(decoded_imgs[i]
-        # # ax.get_xaxis().set_visible(False)
-        # # ax.get_yaxis().set_visible(False)
-
-        plt.plot(x_test[i], label="original")
-        plt.plot(x_test_noisy[i], label="noisy")
-        plt.plot(decoded_imgs[i], label="decoded")
-
-    plt.legend()
     plt.show()
