@@ -1,7 +1,10 @@
 #!/usr/bin/env python
 
-# Test denoising convolutional autoencoder with Tensorflow2.0
-# adding noise from data
+# A denoising convolutional autoencoder with Tensorflow2.0
+# applied to waveform data.
+#
+# Noise from data is added to MC signal data.
+# You need datasets of signal and noise, separately, in pickle format.
 # To train and plot
 #  % ./denoising5_tf2.py 0 1
 # To train without display (job)
@@ -14,6 +17,8 @@
 from comet_ml import Experiment
 
 # Add the following code anywhere in your machine learning file
+# api_key and workspace are supposed to be set in .comet.config file,
+# otherwise set here like Experiment(api_key="AAAXXX", workspace = "yyy", project_name="zzz")
 experiment = Experiment(project_name="wf_denoising")
 
 import os, sys
@@ -21,10 +26,15 @@ import numpy as np
 import pandas as pd
 import json
 
+import tensorflow as tf
+from tensorflow.keras.layers import Input, Dense, Conv1D, MaxPooling1D, UpSampling1D
+from tensorflow.keras import Model
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.callbacks import ModelCheckpoint
+
 # arg
 load_weights = bool(int(sys.argv[1])) 
 plot_data = bool(int(sys.argv[2])) 
-
 filename = os.path.basename(__file__)
 filename = os.path.splitext(filename)[0]
 
@@ -33,34 +43,37 @@ if not plot_data:
     matplotlib.use("Agg") # this is necessary when using plt without display (batch)
 import matplotlib.pyplot as plt
 
-import tensorflow as tf
-from tensorflow.keras.layers import Input, Dense, Conv1D, MaxPooling1D, UpSampling1D
-from tensorflow.keras import Model
-from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.callbacks import ModelCheckpoint
+
+# Parameters
 
 # Waveform has 1024 sample-points
 npoints = 1024 # 256 # number of sample-points to be used
 scale = 5
 offset = 0.05 # 50 mV
 
+signal_dataset_file = 'wf11100.pkl'
+noise_dataset_file  = 'wf328469.pkl'
+
 # basic hyper-parameters
 params = {
-    'optimizer': 'adam',
-    'loss': 'mse',
-    'epochs': 10, # 20,
-    'batch_size': 256,
+    'optimizer':   'adam',
+    'loss':        'mse', #'binary_crossentropy', 
+    'epochs':      10, # 20,
+    'batch_size':  256,
 }
 # additional parameters
 params2 = {
-    'npoints': npoints,
-    'scale': scale,
-    'offset': offset,
-    'conv_activation': 'relu',
-    'output_activation': 'sigmoid',
+    'conv_activation':     'relu',
+    'output_activation':   'linear', #'sigmoid',
+    'signal_dataset_file': signal_dataset_file,
+    'noise_dataset_file':  noise_dataset_file,
+    'npoints':             npoints,
+    'scale':               scale,
+    'offset':              offset,
 }
 experiment.log_parameters(params2)
-    
+
+
 # Build model with functional API
 
 input_img = Input(shape=(npoints,1))
@@ -81,28 +94,27 @@ decoded = Conv1D(1, 5, padding='same', activation=params2['output_activation'])(
 
 autoencoder = Model(inputs=input_img, outputs=decoded)
 
-autoencoder.compile(optimizer=params['optimizer'], loss=params['loss'])
-#autoencoder.compile(optimizer='adam', loss='binary_crossentropy') 
+autoencoder.compile(optimizer=params['optimizer'], loss=params['loss']) 
 autoencoder.summary()
 
 
 
 # Load dataset
 #x_original = np.loadtxt('wf11000_ori.csv', delimiter=',')
-x_original = pd.read_pickle('wf11100.pkl').to_numpy()
-x_noise = pd.read_pickle('wf328469.pkl').to_numpy()
+x_original = pd.read_pickle(signal_dataset_file).to_numpy()
+x_noise = pd.read_pickle(noise_dataset_file ).to_numpy()
 
 nsamples = min(len(x_original), len(x_noise))
 x_original = x_original[0:nsamples]
 x_noise = x_noise[0:nsamples]
 
 
-# shape data so that value in [0, 1]
+# Shape data in appropriate format with adding noise
+
 x_original = x_original.astype('float32')
 x_original = x_original.T[-npoints:].T # keep last npoints
 x_noise = x_noise.astype('float32')
 x_noise = x_noise.T[-npoints:].T # keep last npoints
-
 
 # Add noise
 x_train_noisy = x_original + x_noise
@@ -113,13 +125,13 @@ x_original += offset * scale;
 x_train_noisy *= scale # scale
 x_train_noisy += offset * scale; # add 50 mV offset
 
+# Values in [0,1]
 x_original = np.clip(x_original, 0, 1);
 x_train_noisy = np.clip(x_train_noisy, 0, 1);
 
+# To match the input shape for Conv1D with 1 channel
 x_original = np.reshape(x_original, (len(x_original), npoints, 1))
 x_train_noisy = np.reshape(x_train_noisy, (len(x_train_noisy), npoints, 1))
-
-print (x_original.shape)
 
 history=[]
 if not load_weights:
