@@ -61,7 +61,7 @@ noise_dataset_file  = 'wf328469.pkl'
 params = {
     'optimizer':   'adam',
     'loss':        'mse', #'binary_crossentropy', 
-    'epochs':      10, # 20,
+    'epochs':      2, # 20,
     'batch_size':  256,
 }
 # additional parameters
@@ -73,13 +73,16 @@ params2 = {
     'npoints':             npoints,
     'scale':               scale,
     'offset':              offset,
+    'signal_scale_range':  0.0,
+    'noise_scale_range':  0.0,
+    'baseline_range':  0.0,
 }
 experiment.log_parameters(params2)
 
 
 # Build model with functional API
 
-input_img = Input(shape=(npoints,1))
+input_img = Input(shape=(npoints,1), name='input')
 x = Conv1D(64, 5, padding='same', activation=params2['conv_activation'])(input_img)
 x = MaxPooling1D(2, padding='same')(x)
 x = Conv1D(32, 5, padding='same', activation=params2['conv_activation'])(x)
@@ -93,7 +96,7 @@ x = Conv1D(32, 5, padding='same', activation=params2['conv_activation'])(x)
 x = UpSampling1D(2)(x)
 x = Conv1D(64, 5, padding='same', activation=params2['conv_activation'])(x)
 x = UpSampling1D(2)(x)
-decoded = Conv1D(1, 5, padding='same', activation=params2['output_activation'])(x)
+decoded = Conv1D(1, 5, padding='same', activation=params2['output_activation'], name='output')(x)
 
 autoencoder = Model(inputs=input_img, outputs=decoded)
 
@@ -218,7 +221,11 @@ history=[]
 if not load_weights:
     # generators
     train_batch_generator = MySequence(x_train, x_noise, params['batch_size'], 
-                                       scale=scale, offset=offset)
+                                       scale=scale, offset=offset,
+                                       signal_scale_range = params2['signal_scale_range'],
+                                       noise_scale_range = params2['noise_scale_range'],
+                                       baseline_range = params2['baseline_range']
+                                       )
     test_batch_generator = MySequence(x_test, x_noise_test, params['batch_size'], 
                                       scale=scale, offset=offset)
 
@@ -229,7 +236,7 @@ if not load_weights:
     
     # 'labels' are the pictures themselves
     hist = autoencoder.fit(train_batch_generator,
-                           epochs=2, #50,
+                           epochs=params['epochs'],
                            steps_per_epoch=train_batch_generator.batches_per_epoch,
                            shuffle=True,
                            validation_data=test_batch_generator,
