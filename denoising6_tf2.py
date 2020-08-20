@@ -26,6 +26,7 @@ import os, sys
 import numpy as np
 import pandas as pd
 import json
+import random
 from sklearn.model_selection import train_test_split
 
 import tensorflow as tf
@@ -114,39 +115,112 @@ x_train, x_test = train_test_split(x_original, test_size=test_nsamples, random_s
 x_noise_train, x_noise_test = train_test_split(x_noise, test_size=test_nsamples, random_state=1)
 
 
+class MySequence(tf.keras.utils.Sequence):
+    """ My generator """
+
+    def __init__(self, x_original, x_noise, batch_size,
+                 npoints=1024,
+                 scale=5,
+                 offset=0.05,
+                 signal_scale_range=0.0,
+                 noise_scale_range=0.0,
+                 baseline_range=0.0,
+                 shift_range=0
+                 ):
+        """ 
+        Constructor 
+        arguments:
+           signal_scale_range: range of signal scaling
+        """
+        self.x = x_original
+        self.noise = x_noise
+        self.batch_size = batch_size
+        self.batches_per_epoch = int((len(self.x) - 1) / self.batch_size) + 1
+        self.npoints = npoints
+        self.scale = scale
+        self.offset = offset
+
+        # parameters for data augmentation
+        self.signal_scale_range = signal_scale_range
+        self.noise_scale_range = noise_scale_range
+        self.baseline_range = baseline_range        
+        self.shift_range = shift_range
+
+    def __getitem__(self, idx):
+        """ Generate the batch data """
+
+        x_batch = self.x[idx * self.batch_size:(idx + 1) * self.batch_size]
+        batch_size = len(x_batch)
+
+        # rotate noise array
+        noise_batch = np.roll(self.noise, -(idx * self.batch_size) % len(self.noise));
+        noise_batch = noise_batch[0:batch_size] 
+
+        # shape data 
+        x_batch, noisy_batch = self.preprocess(x_batch, noise_batch)
+
+        return noisy_batch, x_batch
+
+    def __len__(self):
+        return self.batches_per_epoch
+
+    def on_epoch_end(self):
+        pass
 
 
+    def preprocess(self, x_original, x_noise):
+        """ 
+        shape raw data for input 
+        apply data augmentation
+        """
 
-x_original = x_original[0:nsamples]
-x_noise = x_noise[0:nsamples]
+        # Shape data in appropriate format 
+        x_original = x_original.astype('float32')
+        x_original = x_original.T[-self.npoints:].T # keep last npoints
+        x_noise = x_noise.astype('float32')
+        x_noise = x_noise.T[-self.npoints:].T # keep last npoints
+
+        # Data augmentation
+        if self.signal_scale_range > 1.0:
+            x_original = x_original * random.uniform(1/self.signal_scale_range, self.signal_scale_range)
+
+        if self.noise_scale_range > 1.0:
+            x_noise = x_noise * random.uniform(1/self.noise_scale_range, self.noise_scale_range)
+
+        if self.baseline_range > 0.0:
+            x_noise = x_noise + random.uniform(-self.baseline_range, self.baseline_range)
+                                                     
+
+        # Add noise
+        x_noisy = x_original + x_noise
+
+        # Adjust scale and offset of waveforms
+        x_original *= scale # scale
+        x_original += offset * scale;
+        x_noisy *= scale # scale
+        x_noisy += offset * scale; # add 50 mV offset
 
 
-# Shape data in appropriate format with adding noise
+        # Values in [0,1]
+        x_original = np.clip(x_original, 0, 1);
+        x_noisy = np.clip(x_noisy, 0, 1);
 
-x_original = x_original.astype('float32')
-x_original = x_original.T[-npoints:].T # keep last npoints
-x_noise = x_noise.astype('float32')
-x_noise = x_noise.T[-npoints:].T # keep last npoints
+        # To match the input shape for Conv1D with 1 channel
+        x_original = np.reshape(x_original, (len(x_original), self.npoints, 1))
+        x_noisy = np.reshape(x_noisy, (len(x_noisy), self.npoints, 1))
+ 
 
-# Add noise
-x_train_noisy = x_original + x_noise
+        return x_original, x_noisy
 
-# Adjust scale and offset of waveforms
-x_original *= scale # scale
-x_original += offset * scale;
-x_train_noisy *= scale # scale
-x_train_noisy += offset * scale; # add 50 mV offset
 
-# Values in [0,1]
-x_original = np.clip(x_original, 0, 1);
-x_train_noisy = np.clip(x_train_noisy, 0, 1);
-
-# To match the input shape for Conv1D with 1 channel
-x_original = np.reshape(x_original, (len(x_original), npoints, 1))
-x_train_noisy = np.reshape(x_train_noisy, (len(x_train_noisy), npoints, 1))
 
 history=[]
 if not load_weights:
+    # generators
+    train_batch_generator = MySequence(x_train, x_noise, params['batch_size'], 
+                                       scale=scale, offset=offset)
+    test_batch_generator = MySequence(x_test, x_noise_test, params['batch_size'], 
+                                      scale=scale, offset=offset)
 
     # Callback for model checkpoints
     checkpoint = ModelCheckpoint(
@@ -154,12 +228,13 @@ if not load_weights:
         save_best_only=True)
     
     # 'labels' are the pictures themselves
-    hist = autoencoder.fit(x_train_noisy, x_original,
-                           epochs=params['epochs'],
-                           batch_size=params['batch_size'],
+    hist = autoencoder.fit(train_batch_generator,
+                           epochs=2, #50,
+                           steps_per_epoch=train_batch_generator.batches_per_epoch,
                            shuffle=True,
-                           validation_split=0.1,
-                           callbacks=[checkpoint])
+                           validation_data=test_batch_generator,
+                           validation_steps=test_batch_generator.batches_per_epoch
+                           ,callbacks=[checkpoint])
 
 
     # Save history
@@ -192,7 +267,8 @@ plt.ylim(1e-5, 1e-3) #mse
     
 # test data
 x_test = x_original[-11:]
-x_test_noisy = x_train_noisy[-11:]
+x_noise_test = x_noise_train[-11:]
+x_test, x_test_noisy = test_batch_generator.preprocess(x_test, x_noise_test)
 decoded_imgs = autoencoder.predict(x_test_noisy)
 
 # revert scale and offset
