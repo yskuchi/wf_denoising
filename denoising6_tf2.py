@@ -26,7 +26,7 @@ import os, sys
 import numpy as np
 import pandas as pd
 import json
-#from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split
 
 import tensorflow as tf
 from tensorflow.keras.layers import Input, Dense, Conv1D, MaxPooling1D, UpSampling1D
@@ -106,11 +106,17 @@ autoencoder.summary()
 x_original = pd.read_pickle(signal_dataset_file).to_numpy()
 x_noise = pd.read_pickle(noise_dataset_file ).to_numpy()
 
-# divide into train and test samples
-#x_train, x_test = train_test_split(x_original, test_size=0.1, random_state=1)
-
-
 nsamples = min(len(x_original), len(x_noise))
+test_nsamples = (int)(nsamples * 0.1)
+
+# divide into train and test samples
+x_train, x_test = train_test_split(x_original, test_size=test_nsamples, random_state=1)
+x_noise_train, x_noise_test = train_test_split(x_noise, test_size=test_nsamples, random_state=1)
+
+
+
+
+
 x_original = x_original[0:nsamples]
 x_noise = x_noise[0:nsamples]
 
