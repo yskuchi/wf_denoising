@@ -3,7 +3,8 @@ void read_wf_macro(TString filename)
    //% ./megbartender -I 'read_wf_macro.C("raw11100.root")'
 
    //Int_t addressSelect[] = {20480, 35319}; // MC
-   Int_t addressSelect[] = {2560, 2775}; // 2018
+   // Int_t addressSelect[] = {2560, 2775}; // 2018
+   Int_t addressSelect[] = {6176, 7671}; // 2020
    
    TChain *raw = new TChain("raw");
    raw->Add(filename);
