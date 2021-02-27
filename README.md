@@ -53,7 +53,7 @@ As the noise datasets, pedestal run data can be used.
 
 First, use `read_wf_macro.C` to decode a raw.root file.
 ```
-% ./megbartender -I 'read_wf_macro.C("raw11100.root")'
+% ./meganalyzer -I 'read_wf_macro.C("raw11100.root")'
 ```
 You have to modify some parameters in the macro to select channels to be extracted and to set the size of dataset.
 
@@ -67,7 +67,7 @@ Next, convert the csv file to pickle file uisng `csv2pickle.py`
 
 
 
-## Try and error
+## Trial and error
 
 ### Architecture
 
@@ -93,6 +93,6 @@ Different loss functions cannot be directly compared and so it is not clear whet
 The scale and offset of the input waveform seem important.
 Regarding to CDCH waveforms, adding offset of 50 mV and scaling up by a factor 5 works well.
 
-These parameters have to be applied to the output of predict() 
-to revert to the original scale.
+Note that if you use the model (.h5 file) in other place, hese parameters have to be applied to the input/output of predict() 
+to convert/revert to the original scale.
 

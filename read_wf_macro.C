@@ -1,16 +1,31 @@
 void read_wf_macro(TString filename)
 {
-   //% ./megbartender -I 'read_wf_macro.C("raw11100.root")'
+   //% ./meganalyzer -I 'read_wf_macro.C("raw11100.root")'
 
-   // Int_t addressSelect[] = {20480, 35319}; // MC
+   Int_t addressSelect[] = {20480, 35319}; // MC
    // Int_t addressSelect[] = {2560, 2775}; // 2018
-   Int_t addressSelect[] = {6176, 7671}; // 2020
+   //Int_t addressSelect[] = {6176, 7671}; // 2020
    
    TChain *raw = new TChain("raw");
    raw->Add(filename);
    auto nentry = raw->GetEntries();
    cout<<"Number of events = "<<nentry<<endl;
 
+   // rec file to get CYLDCHWireRunHeader
+   TString recfilename = filename;
+   recfilename.ReplaceAll("raw", "rec");
+   TFile *recfile = TFile::Open(recfilename);
+   auto pWireRunHeaders = (TClonesArray*)(recfile->Get("CYLDCHWireRunHeader"));
+
+   vector<Int_t> addresses; // reorder addresses by wire IDs.
+   for (Int_t iWire = 0; iWire < pWireRunHeaders->GetSize(); iWire++) {
+      auto pWireRunHeader = static_cast<MEGCYLDCHWireRunHeader*>(pWireRunHeaders->At(iWire));
+      if (!pWireRunHeader->GetActive()) continue;
+      if (pWireRunHeader->GetDRSAddress_u() < 0 || pWireRunHeader->GetDRSAddress_d() < 0) continue;
+      addresses.push_back(pWireRunHeader->GetDRSAddress_u());
+      addresses.push_back(pWireRunHeader->GetDRSAddress_d());      
+   }
+   
    TString csvfile = filename;
    csvfile.ReplaceAll(".root", ".csv");
    csvfile.ReplaceAll("raw", "wf");
@@ -27,10 +42,8 @@ void read_wf_macro(TString filename)
    //tree->Branch("drs", &drs[0], "drs[1024]/F");
 
    
-   //Int_t maxEvent = 40;// 200;//-1; // MC
-   Int_t maxEvent = 500;//-1;   // 2018
-   Int_t wfRange[] = {0, 1024};
-
+   Int_t maxEvent = 50;// 200;//-1; // MC
+   //Int_t maxEvent = 500;//-1;   // 2018
    
    TTreeReader reader(raw);
    TTreeReaderArray<MEGDRSChip>   chipRA(reader, "drschip");
@@ -38,10 +51,12 @@ void read_wf_macro(TString filename)
    MEGDRSWaveform wf[8];
    Int_t iEvent(-1);
    Int_t nTotData(0);
+   Int_t nChPrev(0);
    while (reader.Next()) {
       ++iEvent;
       if (maxEvent > 0 && iEvent > maxEvent) break;
-      
+
+      map<Int_t, vector<Float_t> > wfs;
       for (auto&& chip: chipRA) {
          auto chipData = chip.GetDRSChipData();
          auto address = chipData->GetAddress();
@@ -51,20 +66,39 @@ void read_wf_macro(TString filename)
             chipData->SetWaveformAt(iChannel, &wf[iChannel]);
          }
          chipData->DecodeWaves();
-         string line;
          for (Int_t iChannel = 0; iChannel < 8; iChannel++) {
             if (!wf[iChannel].GetNPoints()) continue;
-
+            Int_t addressCh = address + iChannel;
             auto ampl = wf[iChannel].GetAmplitude();
-            std::copy(ampl, ampl+1024, drs.begin());
-            tree->Fill();
             
-            for_each(ampl, ampl+1024, [&](Double_t a){line += std::to_string(a)+",";});
-            line.pop_back();
-            line += '\n';
-            ++nTotData;
+            std::copy(ampl, ampl+1024, drs.begin());
+            wfs[addressCh] = drs;
          }
-         fout<<line;
+      }
+      Int_t nCh(0);
+      for (size_t iCh = 0; iCh < addresses.size(); iCh += 2) {
+         if (wfs.find(addresses[iCh]) != wfs.end()
+             && wfs.find(addresses[iCh + 1]) != wfs.end()) {
+            string line;
+            for (Int_t iEnd = 0; iEnd < 2; iEnd++) {
+               
+               std::copy(wfs[addresses[iCh + iEnd]].begin(),
+                         wfs[addresses[iCh + iEnd]].end(), drs.begin());
+            
+               tree->Fill();
+            
+               for_each(drs.begin(), drs.end(), [&](Double_t a) {line += std::to_string(a)+",";});
+               line.pop_back();
+               line += '\n';
+               ++nCh;
+               ++nTotData;
+            }
+            fout<<line;
+         }
+      }
+      if (nCh != nChPrev) {
+         cout<<"Number of active channels "<<nCh<<endl;
+         nChPrev = nCh;
       }
    }
    cout<<"Total number of samples: "<<nTotData<<endl;
