@@ -2,9 +2,8 @@ void read_wf_macro(TString filename)
 {
    //% ./meganalyzer -I 'read_wf_macro.C("raw11100.root")'
 
-   Int_t addressSelect[] = {20480, 35319}; // MC
-   // Int_t addressSelect[] = {2560, 2775}; // 2018
-   //Int_t addressSelect[] = {6176, 7671}; // 2020
+
+   Int_t kNPoints = 512; // number of points of a wf to be output
    
    TChain *raw = new TChain("raw");
    raw->Add(filename);
@@ -25,6 +24,13 @@ void read_wf_macro(TString filename)
       addresses.push_back(pWireRunHeader->GetDRSAddress_u());
       addresses.push_back(pWireRunHeader->GetDRSAddress_d());      
    }
+   auto addressMin = std::min_element(addresses.begin(), addresses.end());
+   auto addressMax = std::max_element(addresses.begin(), addresses.end());
+   // Int_t addressSelect[] = {20480, 35319}; // MC
+   // Int_t addressSelect[] = {2560, 2775}; // 2018
+   // Int_t addressSelect[] = {6176, 7671}; // 2020
+   Int_t addressSelect[] = {*addressMin, *addressMax}; // 2021 or new MC
+   cout<<"Address "<<*addressMin<<" - "<<*addressMax<<endl;
    
    TString csvfile = filename;
    csvfile.ReplaceAll(".root", ".csv");
@@ -70,9 +76,11 @@ void read_wf_macro(TString filename)
             if (!wf[iChannel].GetNPoints()) continue;
             Int_t addressCh = address + iChannel;
             auto ampl = wf[iChannel].GetAmplitude();
-            
-            std::copy(ampl, ampl+1024, drs.begin());
-            wfs[addressCh] = drs;
+            // drs.assign(1024, 0);
+            // std::copy(ampl, ampl+wf[iChannel].GetNPoints(), drs.begin());
+            // wfs[addressCh] = drs;
+            wfs[addressCh].resize(wf[iChannel].GetNPoints(), 0);
+            std::copy(ampl, ampl+wf[iChannel].GetNPoints(), wfs[addressCh].begin());
          }
       }
       Int_t nCh(0);
@@ -81,10 +89,12 @@ void read_wf_macro(TString filename)
              && wfs.find(addresses[iCh + 1]) != wfs.end()) {
             string line;
             for (Int_t iEnd = 0; iEnd < 2; iEnd++) {
-               
+               drs.clear();
+               drs.resize(1024, 0);
                std::copy(wfs[addresses[iCh + iEnd]].begin(),
                          wfs[addresses[iCh + iEnd]].end(), drs.begin());
-            
+               drs.resize(kNPoints);
+               
                tree->Fill();
             
                for_each(drs.begin(), drs.end(), [&](Double_t a) {line += std::to_string(a)+",";});
