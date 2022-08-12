@@ -10,19 +10,37 @@ void read_wf_macro(TString filename)
    auto nentry = raw->GetEntries();
    cout<<"Number of events = "<<nentry<<endl;
 
+   vector<Int_t> addresses; // reorder addresses by wire IDs.
+
    // rec file to get CYLDCHWireRunHeader
    TString recfilename = filename;
    recfilename.ReplaceAll("raw", "rec");
-   TFile *recfile = TFile::Open(recfilename);
-   auto pWireRunHeaders = (TClonesArray*)(recfile->Get("CYLDCHWireRunHeader"));
-
-   vector<Int_t> addresses; // reorder addresses by wire IDs.
-   for (Int_t iWire = 0; iWire < pWireRunHeaders->GetSize(); iWire++) {
-      auto pWireRunHeader = static_cast<MEGCYLDCHWireRunHeader*>(pWireRunHeaders->At(iWire));
-      if (!pWireRunHeader->GetActive()) continue;
-      if (pWireRunHeader->GetDRSAddress_u() < 0 || pWireRunHeader->GetDRSAddress_d() < 0) continue;
-      addresses.push_back(pWireRunHeader->GetDRSAddress_u());
-      addresses.push_back(pWireRunHeader->GetDRSAddress_d());      
+   TString simfilename = filename;
+   simfilename.ReplaceAll("raw", "sim");
+   if (TFile *recfile = TFile::Open(recfilename); recfile) {
+      auto pWireRunHeaders = (TClonesArray*)(recfile->Get("CYLDCHWireRunHeader"));
+      
+      for (Int_t iWire = 0; iWire < pWireRunHeaders->GetSize(); iWire++) {
+         auto pWireRunHeader = static_cast<MEGCYLDCHWireRunHeader*>(pWireRunHeaders->At(iWire));
+         if (!pWireRunHeader->GetActive()) continue;
+         if (pWireRunHeader->GetDRSAddress_u() < 0 || pWireRunHeader->GetDRSAddress_d() < 0) continue;
+         addresses.push_back(pWireRunHeader->GetDRSAddress_u());
+         addresses.push_back(pWireRunHeader->GetDRSAddress_d());      
+      }
+      recfile->Close();
+      delete recfile;
+   } else if (TFile *simfile = TFile::Open(simfilename); simfile) {
+      auto pWireRunHeaders = (TClonesArray*)(simfile->Get("BarCYLDCHWireRunHeader"));
+      
+      for (Int_t iWire = 0; iWire < pWireRunHeaders->GetSize(); iWire++) {
+         auto pWireRunHeader = static_cast<MEGBarCYLDCHWireRunHeader*>(pWireRunHeaders->At(iWire));
+         //if (!pWireRunHeader->GetActive()) continue;
+         if (pWireRunHeader->GetDRSAddress_u() < 0 || pWireRunHeader->GetDRSAddress_d() < 0) continue;
+         addresses.push_back(pWireRunHeader->GetDRSAddress_u());
+         addresses.push_back(pWireRunHeader->GetDRSAddress_d());      
+      }
+      simfile->Close();
+      delete simfile;
    }
    auto addressMin = std::min_element(addresses.begin(), addresses.end());
    auto addressMax = std::max_element(addresses.begin(), addresses.end());
