@@ -14,15 +14,15 @@ a denoising convolutional autoencoder technique.
 
 To train and plot  
 ```
-% ./denoising5_tf2.py 0 1
+$ ./denoising5_tf2.py 0 1
 ```
 To train without display (job)
 ```
-% srun --cpus-per-task=10 ./denoising5_tf2.py 0 0
+$ srun --cpus-per-task=10 ./denoising5_tf2.py 0 0
 ```
 or
 ```
-% sbatch --cpus-per-task=10 ./denoising5_tf2.py 0 0
+$ sbatch --cpus-per-task=10 ./denoising5_tf2.py 0 0
 ```
 
 
@@ -53,7 +53,7 @@ As the noise datasets, pedestal run data can be used.
 
 First, use `read_wf_macro.C` to decode a raw.root file.
 ```
-% ./meganalyzer -I 'read_wf_macro.C("raw11100.root")'
+$ ./meganalyzer -I 'read_wf_macro.C("raw11100.root")'
 ```
 You have to modify some parameters in the macro to select channels to be extracted and to set the size of dataset.
 
@@ -62,9 +62,22 @@ Since handling csv file is not efficient (e.g. loading a large size csv file tak
 
 Next, convert the csv file to pickle file uisng `csv2pickle.py`
 ```
-% ./csv2pickle.py wf11100.csv
+$ ./csv2pickle.py wf11100.csv
 ```
+(2022 Aug.) Use pandas version 1.1.4. Pickle file made with 1.4.1 cannot be loaded in Google colab environment. (Both pandas and pickle protocol versions are incompatible.)
 
+
+#### To convert to ONNX file
+
+```bash
+$ ./convert2onnx.py noiseextraction2D8ch_tf2_20220812.h5 CDCHWfDenoising_Method1_402042_20220812_2D8ch.onnx
+```
+Download the trained Keras model (*.h5) to this directory.
+You may have to set python environment up before running the conversion script, like:
+```bash
+$ conda activate tf2
+```
+To convert .h5 file, onnxmltools 1.8 is needed; do not update higher version.
 
 
 ## Trial and error

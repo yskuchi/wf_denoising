@@ -66,7 +66,7 @@ void read_wf_macro(TString filename)
    //tree->Branch("drs", &drs[0], "drs[1024]/F");
 
    
-   Int_t maxEvent = 50;// 200;//-1; // MC
+   Int_t maxEvent = 500;//-1; // MC
    //Int_t maxEvent = 500;//-1;   // 2018
    
    TTreeReader reader(raw);
