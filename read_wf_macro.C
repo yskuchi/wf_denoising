@@ -4,6 +4,12 @@ void read_wf_macro(TString filename)
 
 
    Int_t kNPoints = 512; // number of points of a wf to be output
+   Bool_t kReadCDCH = false;
+   Bool_t kReadSPX = true;
+   
+   //Int_t maxEvent = -1;// 500;//-1; // MC
+   Int_t maxEvent = 20;// 500;//-1;   // 2018
+   
    
    TChain *raw = new TChain("raw");
    raw->Add(filename);
@@ -18,26 +24,44 @@ void read_wf_macro(TString filename)
    TString simfilename = filename;
    simfilename.ReplaceAll("raw", "sim");
    if (TFile *recfile = TFile::Open(recfilename); recfile) {
-      auto pWireRunHeaders = (TClonesArray*)(recfile->Get("CYLDCHWireRunHeader"));
-      
-      for (Int_t iWire = 0; iWire < pWireRunHeaders->GetSize(); iWire++) {
-         auto pWireRunHeader = static_cast<MEGCYLDCHWireRunHeader*>(pWireRunHeaders->At(iWire));
-         if (!pWireRunHeader->GetActive()) continue;
-         if (pWireRunHeader->GetDRSAddress_u() < 0 || pWireRunHeader->GetDRSAddress_d() < 0) continue;
-         addresses.push_back(pWireRunHeader->GetDRSAddress_u());
-         addresses.push_back(pWireRunHeader->GetDRSAddress_d());      
+      if (kReadCDCH) {
+         auto pWireRunHeaders = (TClonesArray*)(recfile->Get("CYLDCHWireRunHeader"));
+         for (Int_t iWire = 0; iWire < pWireRunHeaders->GetSize(); iWire++) {
+            auto pWireRunHeader = static_cast<MEGCYLDCHWireRunHeader*>(pWireRunHeaders->At(iWire));
+            if (!pWireRunHeader->GetActive()) continue;
+            if (pWireRunHeader->GetDRSAddress_u() < 0 || pWireRunHeader->GetDRSAddress_d() < 0) continue;
+            addresses.push_back(pWireRunHeader->GetDRSAddress_u());
+            addresses.push_back(pWireRunHeader->GetDRSAddress_d());      
+         }
+      }
+      if (kReadSPX) {
+         auto pPPDRunHeaders = (TClonesArray*)(recfile->Get("SPXPPDRunHeader"));
+         for (Int_t iPPD = 0; iPPD < pPPDRunHeaders->GetSize(); iPPD++) {
+            auto pPPDRunHeader = static_cast<MEGSPXPPDRunHeader*>(pPPDRunHeaders->At(iPPD));
+            if (pPPDRunHeader->GetDRSAddress() < 0) continue;
+            addresses.push_back(pPPDRunHeader->GetDRSAddress());
+         }
       }
       recfile->Close();
       delete recfile;
    } else if (TFile *simfile = TFile::Open(simfilename); simfile) {
-      auto pWireRunHeaders = (TClonesArray*)(simfile->Get("BarCYLDCHWireRunHeader"));
-      
-      for (Int_t iWire = 0; iWire < pWireRunHeaders->GetSize(); iWire++) {
-         auto pWireRunHeader = static_cast<MEGBarCYLDCHWireRunHeader*>(pWireRunHeaders->At(iWire));
-         //if (!pWireRunHeader->GetActive()) continue;
-         if (pWireRunHeader->GetDRSAddress_u() < 0 || pWireRunHeader->GetDRSAddress_d() < 0) continue;
-         addresses.push_back(pWireRunHeader->GetDRSAddress_u());
-         addresses.push_back(pWireRunHeader->GetDRSAddress_d());      
+      if (kReadCDCH) {
+         auto pWireRunHeaders = (TClonesArray*)(simfile->Get("BarCYLDCHWireRunHeader"));      
+         for (Int_t iWire = 0; iWire < pWireRunHeaders->GetSize(); iWire++) {
+            auto pWireRunHeader = static_cast<MEGBarCYLDCHWireRunHeader*>(pWireRunHeaders->At(iWire));
+            //if (!pWireRunHeader->GetActive()) continue;
+            if (pWireRunHeader->GetDRSAddress_u() < 0 || pWireRunHeader->GetDRSAddress_d() < 0) continue;
+            addresses.push_back(pWireRunHeader->GetDRSAddress_u());
+            addresses.push_back(pWireRunHeader->GetDRSAddress_d());      
+         }
+      }
+      if (kReadSPX) {
+         auto pPPDRunHeaders = (TClonesArray*)(simfile->Get("BarSPXPPDRunHeader"));
+         for (Int_t iPPD = 0; iPPD < pPPDRunHeaders->GetSize(); iPPD++) {
+            auto pPPDRunHeader = static_cast<MEGBarSPXPPDRunHeader*>(pPPDRunHeaders->At(iPPD));
+            if (pPPDRunHeader->GetDRSAddress() < 0) continue;
+            addresses.push_back(pPPDRunHeader->GetDRSAddress());
+         }
       }
       simfile->Close();
       delete simfile;
@@ -53,11 +77,23 @@ void read_wf_macro(TString filename)
    TString csvfile = filename;
    csvfile.ReplaceAll(".root", ".csv");
    csvfile.ReplaceAll("raw", "wf");
+   if (kReadCDCH) {
+      csvfile.ReplaceAll("wf", "wf_cdch");
+   }
+   if (kReadSPX) {
+      csvfile.ReplaceAll("wf", "wf_spx");
+   }
    csvfile = basename(csvfile.Data());
    ofstream fout(csvfile.Data(), std::ios::out);
 
    TString rootfilename = filename;
    rootfilename.ReplaceAll("raw", "wf");
+   if (kReadCDCH) {
+      rootfilename.ReplaceAll("wf", "wf_cdch");
+   }
+   if (kReadSPX) {
+      rootfilename.ReplaceAll("wf", "wf_spx");
+   }
    rootfilename = basename(rootfilename.Data());
    TFile rootout(rootfilename, "RECREATE", "wf");
    TTree *tree = new TTree("wf", "Tree for waveform");
@@ -65,10 +101,6 @@ void read_wf_macro(TString filename)
    auto branch = tree->Branch("drs", &drs);
    //tree->Branch("drs", &drs[0], "drs[1024]/F");
 
-   
-   Int_t maxEvent = 500;//-1; // MC
-   //Int_t maxEvent = 500;//-1;   // 2018
-   
    TTreeReader reader(raw);
    TTreeReaderArray<MEGDRSChip>   chipRA(reader, "drschip");
 
