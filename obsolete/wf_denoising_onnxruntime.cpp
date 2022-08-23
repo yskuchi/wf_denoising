@@ -25,7 +25,8 @@ int wf_denoising_onnxruntime()
 
 
    // ONNX model file
-   string modelfile = "wf_denoising.onnx";
+   string modelfile = "CDCHWfDenoising_356990_20201123_0.onnx";
+   // string modelfile = "wf_denoising.onnx";
 
    // Layer names
    // input and output layer names must be identical to those defined when the model was built
@@ -66,10 +67,15 @@ int wf_denoising_onnxruntime()
       std::cerr << exception.what() << std::endl;
       return 1;
    }
-
+   
+   std::vector<std::string> input_names2 = session_->GetInputNames();
+   for (auto &&name: input_names2) {
+      cout<<"NNNNN "<<name<<endl;
+   }
+   
 
    // load data
-   ifstream ifs("../wf328469.csv");
+   ifstream ifs("./wf328469.csv");
    string line;
    std::vector<float> t(1024);
    while (getline(ifs, line)) {
