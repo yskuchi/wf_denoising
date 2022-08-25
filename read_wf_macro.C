@@ -7,7 +7,8 @@ void read_wf_macro(TString filename)
    Int_t kNPoints = 512; // number of points of a wf to be output
    Bool_t kReadCDCH = true;
    Bool_t kReadSPX = false;
-
+   Bool_t kOnly1stClusterTiming = true;
+   
    //Int_t maxEvent = -1;// 500;//-1; // MC
    Int_t maxEvent = 500;//-1;   // 2018
 
@@ -118,7 +119,11 @@ void read_wf_macro(TString filename)
    csvfile2.ReplaceAll(".root", ".csv");
    csvfile2.ReplaceAll("raw", "cls");
    if (kReadCDCH) {
-      csvfile2.ReplaceAll("cls", "cls_cdch");
+      if (kOnly1stClusterTiming) {
+         csvfile2.ReplaceAll("cls", "cls1st_cdch");
+      } else {
+         csvfile2.ReplaceAll("cls", "cls_cdch");
+      }
    }
    if (kReadSPX) {
       csvfile2.ReplaceAll("cls", "cls_spx");
@@ -247,8 +252,14 @@ void read_wf_macro(TString filename)
                               // closer to the next point
                               bin++;
                            }
-                           mcwf[iside]->AddAmplitudeAt(bin, clsSize);
-                           mcwfsum[iside]->AddAmplitudeAt(bin, clsSize);
+                           if (kOnly1stClusterTiming) {
+                              if (iCluster == 0) {
+                                 mcwf[iside]->SetAmplitudeAt(bin, 1);
+                                 mcwfsum[iside]->SetAmplitudeAt(bin, 1);
+                              }
+                           } else {
+                              mcwfsum[iside]->AddAmplitudeAt(bin, clsSize);
+                           }
                         }
                      }
                   }
